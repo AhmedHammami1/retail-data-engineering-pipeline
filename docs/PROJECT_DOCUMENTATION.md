@@ -685,3 +685,62 @@ Test-related records should be flagged during transformation.
 
 Preserve the original records and classify exceptional transactions
 during the transformation phase where sufficient evidence exists.
+### 8.8 General Dataset Profiling
+
+**Dataset dimensions:**
+- Rows: 1,067,371
+- Columns: 8
+
+**Date range:**
+- Start: 2009-12-01 07:45:00
+- End: 2011-12-09 12:50:00
+
+**Unique business entities:**
+- Invoices: 53,628
+- Products: 5,305
+- Customers: 5,942
+- Countries: 43
+
+**Quantity statistics:**
+- Mean: 9.94
+- Median: 3
+- Minimum: -80,995
+- Maximum: 80,995
+
+**Price statistics:**
+- Mean: 4.65
+- Median: 2.10
+- Minimum: -53,594.36
+- Maximum: 38,970
+
+**Observations:**
+- The United Kingdom represents the majority of transactions.
+- Quantity and price contain extreme values.
+- Negative quantities and prices require appropriate business rules.
+- The customer count represents non-null Customer IDs.
+
+**Conclusion:**
+
+Initial dataset exploration and profiling are complete.
+The dataset is sufficiently understood to begin developing
+the ETL pipeline. No source records have been modified.
+### 8.9 Data Extraction and Parquet Export
+
+The two Excel worksheets were successfully extracted and combined.
+
+- Total rows: 1,067,371
+- Total columns: 8
+- Output format: Parquet
+- Output path: data/processed/retail_extracted.parquet
+
+The following columns were standardized as strings:
+- Invoice
+- StockCode
+- Description
+
+This was necessary because these columns contained mixed Python types,
+which prevented PyArrow from exporting them consistently.
+
+The original Excel dataset remains unchanged.
+
+**Status:** Extraction and Parquet export completed successfully.
