@@ -978,3 +978,213 @@ The exported Parquet file was reloaded using Pandas to verify that the data was 
 All validation results matched the expected values.
 
 **Conclusion:** The initial data cleaning and validation stage is complete. The extracted dataset remains unchanged, while the cleaned dataset is stored separately for subsequent transformation and warehouse loading.
+# 10. Data Warehouse Design
+
+## 10.1 Business Process
+
+The data warehouse focuses on online retail sales transactions. It will support analysis of revenue, product performance, customer behavior, geographical distribution, and cancellations.
+
+## 10.2 Fact Table Grain
+
+The grain of `FactSales` is one product transaction line within an invoice.
+
+Each source row represents a product line and retains its invoice identifier, product information, transaction date, customer information, country, quantity, and unit price.
+
+## 10.3 Star Schema
+
+The proposed warehouse contains one fact table and four dimension tables:
+
+- `FactSales`
+- `DimDate`
+- `DimProduct`
+- `DimCustomer`
+- `DimCountry`
+
+## 10.4 Fact Table Measures
+
+- Quantity
+- UnitPrice
+- LineAmount = Quantity × UnitPrice
+
+The fact table also preserves transaction indicators such as IsCancelled, IsZeroPrice, IsNegativePrice, and IsCustomerUnknown.
+
+## 10.5 Dimension Tables
+
+**DimDate:** Calendar date, day, month, quarter, and year.
+
+**DimProduct:** Product StockCode and description.
+
+**DimCustomer:** Customer identifier.
+
+**DimCountry:** Country name.
+
+Each dimension will use a generated surrogate key as its primary key.
+
+The invoice identifier will be retained directly in FactSales as a degenerate dimension.
+
+## 10.6 Technical Design Decisions
+
+- PostgreSQL will be used as the data warehouse database.
+- Monetary values will use NUMERIC types to preserve decimal precision.
+- Customer identifiers will be converted to nullable integers.
+- Full transaction timestamps will be preserved.
+- Missing customer identifiers will be represented by an unknown-customer dimension member.
+- Product descriptions will not be arbitrarily selected when a StockCode has multiple descriptions.
+- Cancellation and unusual-price records will be preserved.
+
+## 10.7 Dataset Coverage
+
+The transaction date range is December 1, 2009 to December 9, 2011.
+## 10.8 PostgreSQL Warehouse Schema Creation
+
+The existing PostgreSQL database `retail_dw` is used to host the data warehouse.
+
+A dedicated schema named `dw` was created to organize warehouse tables separately from other database objects.
+
+The schema will contain:
+
+- `dim_date`
+- `dim_product`
+- `dim_customer`
+- `dim_country`
+- `fact_sales`
+
+The schema was created using `CREATE SCHEMA IF NOT EXISTS dw`, making the operation safe to execute more than once.
+### 10.9 Dimension Tables Creation
+
+Four dimension tables were designed and created in the `dw` schema:
+
+- `dim_date`: Stores calendar attributes using an integer date key in YYYYMMDD format.
+- `dim_product`: Stores product codes and descriptions. Multiple descriptions for a StockCode are allowed.
+- `dim_customer`: Stores customer identifiers and supports a dedicated unknown-customer member.
+- `dim_country`: Stores unique country names.
+
+Surrogate keys are generated for product, customer, and country dimensions using PostgreSQL SERIAL primary keys.
+
+The date dimension uses a deterministic integer key based on the calendar date.
+### 10.10 Fact Table Creation
+
+The central fact table `dw.fact_sales` was created.
+
+**Fact table grain:** One row represents one product transaction line within an invoice.
+
+The table contains:
+
+- A generated primary key: `sales_key`.
+- Four foreign keys referencing the dimension tables.
+- Invoice identifier and full transaction timestamp.
+- Quantity, unit price, and line amount.
+- Four Boolean transaction indicators.
+
+Foreign-key constraints enforce referential integrity between the fact table and its dimensions.
+
+The original transaction timestamp is retained alongside the integer date key to preserve time-level information.
+
+Customer records with missing identifiers will be linked to a dedicated unknown-customer dimension member during the loading stage.
+### 11.1 Loading Date and Product Dimensions
+
+The Python ETL pipeline successfully populated the first two dimension tables.
+
+**DimDate:**
+- Distinct source dates: 604
+- Records inserted: 604
+- Database total: 604
+
+The date dimension contains one record per distinct calendar date, with attributes including day, month, month name, quarter, and year.
+
+**DimProduct:**
+- Distinct StockCode-description combinations: 7,405
+- Database total: 7,405
+
+The product dimension preserves distinct StockCode-description combinations, including multiple descriptions for the same StockCode and missing descriptions.
+
+Both loading operations completed successfully, and the database counts matched the source-derived counts.
+## 8. SQL Analytics and Business Insights
+
+### 8.1 Objective
+
+After loading the cleaned retail dataset into PostgreSQL, SQL analytical queries were developed to evaluate sales performance, identify important products and customers, analyze geographical markets, and monitor data quality.
+
+The analysis uses the Star Schema composed of four dimension tables and one fact table.
+
+### 8.2 Monthly Sales Performance
+
+The monthly sales analysis calculates:
+- Total revenue.
+- Total quantity sold.
+- Number of distinct invoices.
+
+**Key findings:**
+- November 2011 recorded the highest monthly revenue, reaching 1,503,866.78.
+- November 2010 also recorded strong performance, with 1,464,293.14 in revenue.
+- November was the strongest observed sales month in both years.
+
+These results suggest a possible seasonal sales pattern.
+
+### 8.3 Top 10 Products by Revenue
+
+Products were ranked according to their total revenue.
+
+**Key findings:**
+- Manual (M) generated the highest revenue: 339,226.24.
+- Regency Cake Stand 3 Tier ranked second: 330,590.32.
+- DOTCOM Postage ranked third: 309,854.11.
+- White Hanging Heart T-Light Holder recorded the highest quantity among the top ten products, with 94,147 units.
+
+Some highly ranked entries represent operational or service codes rather than ordinary merchandise.
+
+### 8.4 Revenue by Country
+
+The geographical analysis identifies the countries generating the highest revenue.
+
+**Key findings:**
+- United Kingdom: 17,251,519.96.
+- EIRE: 658,767.31.
+- Netherlands: 554,038.09.
+- Germany: 425,019.71.
+- France: 350,456.09.
+
+The United Kingdom is the dominant market in the dataset.
+
+### 8.5 Top 10 Customers
+
+Customers were ranked according to their total revenue, excluding transactions with unknown customer IDs.
+
+**Key findings:**
+- Customer 18102 generated the highest revenue: 580,987.04.
+- Customer 14646 ranked second: 528,602.52.
+- Customer 14911 recorded the highest invoice count among the top ten customers, with 398 invoices.
+
+This analysis helps identify high-value customers and supports customer segmentation strategies.
+
+### 8.6 Cancellation Analysis
+
+Cancellation frequency was analyzed monthly using the following formula:
+
+Cancellation Percentage = (Cancelled Transaction Lines / Total Transaction Lines) × 100
+
+**Key findings:**
+- 19,104 cancelled transaction lines were identified.
+- May 2010 recorded the highest monthly cancellation percentage: 2.81%.
+- November 2011 recorded the lowest monthly cancellation percentage: 1.29%.
+- The cancellation percentage remained below 3% in all observed months.
+
+This indicator measures cancelled transaction lines, not cancelled invoices.
+
+### 8.7 Data Quality Overview
+
+The final warehouse contains the following data quality indicators:
+
+| Indicator | Number of Rows |
+|---|---:|
+| Total transaction rows | 1,033,036 |
+| Cancelled rows | 19,104 |
+| Zero-price rows | 6,014 |
+| Negative-price rows | 5 |
+| Unknown customer rows | 235,151 |
+
+Missing customer identifiers represent approximately 22.76% of transaction rows. These records were preserved and associated with a dedicated unknown customer dimension member.
+
+### 8.8 Conclusion
+
+The analytical
