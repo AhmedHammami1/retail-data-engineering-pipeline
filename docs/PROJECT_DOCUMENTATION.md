@@ -1187,4 +1187,90 @@ Missing customer identifiers represent approximately 22.76% of transaction rows.
 
 ### 8.8 Conclusion
 
-The analytical
+The analytical SQL layer demonstrates that the data warehouse can support business-oriented analysis.
+
+The implemented queries provide insights into:
+- Sales evolution over time.
+- Product revenue performance.
+- Geographical market performance.
+- Customer revenue contribution.
+- Cancellation trends.
+- Data quality indicators.
+
+The warehouse therefore provides a structured foundation for further business intelligence and data visualization.
+
+## 9. Docker Containerization
+
+### 9.1 Objective
+
+The project was containerized using Docker and Docker Compose to provide a reproducible and portable execution environment.
+
+Containerization separates the Python ETL application from the PostgreSQL database while allowing both services to communicate through a Docker network.
+
+### 9.2 Container Architecture
+
+The Docker environment consists of two services:
+
+**1. PostgreSQL Database Container**
+- Uses the official PostgreSQL 18 image.
+- Hosts the `retail_dw` database.
+- Stores warehouse data in a persistent Docker volume.
+- Exposes PostgreSQL through port 5433 on the host machine.
+
+**2. Python ETL Container**
+- Uses Python 3.11 slim as its base image.
+- Installs project dependencies from `requirements.txt`.
+- Executes the extraction, cleaning, and loading scripts sequentially.
+- Connects to PostgreSQL through the Docker network using the service name `database`.
+
+### 9.3 Docker Files
+
+| File | Responsibility |
+|---|---|
+| Dockerfile | Builds the Python ETL application image. |
+| docker-compose.yml | Defines and orchestrates both services. |
+| .dockerignore | Excludes unnecessary files from the build context. |
+| .env | Stores database connection configuration. |
+
+### 9.4 Data Persistence and Networking
+
+Docker Compose creates an internal network allowing the Python application to communicate with PostgreSQL.
+
+The ETL application uses `database` as its database hostname and port `5432` inside the Docker network.
+
+A named Docker volume, `postgres_data`, preserves PostgreSQL data when containers are stopped or removed.
+
+The original Excel dataset is mounted into the ETL container as read-only, while processed Parquet files are stored in the project's local data directory.
+
+### 9.5 Execution Workflow
+
+The containerized pipeline follows these steps:
+
+1. Build the Python application image.
+2. Start the PostgreSQL database container.
+3. Wait for PostgreSQL health checks to succeed.
+4. Execute data extraction.
+5. Execute data cleaning and transformation.
+6. Load dimension tables into PostgreSQL.
+7. Load transaction records into the fact table.
+8. Validate warehouse record counts and statistics.
+
+### 9.6 Execution Results
+
+The complete ETL pipeline was successfully executed inside Docker.
+
+| Warehouse table | Records |
+|---|---:|
+| dim_date | 604 |
+| dim_product | 7,405 |
+| dim_customer | 5,943 |
+| dim_country | 43 |
+| fact_sales | 1,033,036 |
+
+The final database validation confirmed that all 1,033,036 expected transaction records were successfully loaded.
+
+### 9.7 Conclusion
+
+Docker and Docker Compose successfully containerized the Retail Data Engineering pipeline and PostgreSQL Data Warehouse.
+
+The implementation provides an isolated execution environment, service communication, persistent database storage, and reproducible ETL execution.

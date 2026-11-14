@@ -1,0 +1,10 @@
+venv/
+.git/
+.gitignore
+.env
+__pycache__/
+*.pyc
+data/processed/
+data/warehouse/
+notebooks/
+tests/
