@@ -744,3 +744,237 @@ which prevented PyArrow from exporting them consistently.
 The original Excel dataset remains unchanged.
 
 **Status:** Extraction and Parquet export completed successfully.
+### 9.1 Exact Duplicate Removal
+
+**Objective:** Identify and remove exact duplicate transaction records.
+
+**Initial dataset:** 1,067,371 rows.
+
+**Results:**
+- Exact duplicate occurrences: 34,335
+- Rows after duplicate removal: 1,033,036
+- Rows removed: 34,335
+- Removal rate: approximately 3.22%
+
+**Method:**
+
+Pandas `duplicated()` was used to identify exact duplicates.
+`drop_duplicates()` retained the first occurrence of each
+identical record.
+
+**Decision:**
+
+Only exact duplicates across all eight columns were removed.
+Records sharing an invoice number or product code were preserved
+when their other values differed.
+
+The original extracted Parquet dataset remains unchanged.
+### 9.2 Missing Description Investigation
+
+After duplicate removal, 4,275 rows had missing descriptions.
+
+All these rows had a unit price of zero.
+
+The StockCode consistency analysis produced:
+
+| Metric | Result |
+|---|---:|
+| StockCodes with one known description | 3,718 |
+| StockCodes with multiple descriptions | 1,232 |
+| StockCodes in missing-description rows | 2,451 |
+| Missing StockCodes with a known description | 2,096 |
+| Missing StockCodes with exactly one description | 1,616 |
+
+**Preliminary cleaning strategy:**
+
+- Recover descriptions for the 1,616 StockCodes with exactly one known description.
+- Preserve missing descriptions for the 480 ambiguous StockCodes.
+- Preserve missing descriptions for the 355 StockCodes without a known description.
+
+No missing descriptions have been modified yet.
+### 9.3 Description Recovery
+
+A description recovery operation was performed using StockCode.
+
+**Results:**
+
+| Metric | Result |
+|---|---:|
+| Missing descriptions before recovery | 4,275 |
+| Recovered descriptions | 2,974 |
+| Remaining missing descriptions | 1,301 |
+| Recovery rate | 69.54% |
+
+**Method:**
+
+A mapping was created between StockCode and its known description.
+Descriptions were recovered only when a StockCode had exactly one
+distinct known description.
+
+**Validation:**
+- 1,301 missing descriptions remain.
+- All remaining missing descriptions have Price = 0.
+- No missing descriptions with non-zero prices remain.
+
+**Decision:**
+
+Ambiguous and unavailable descriptions were preserved as missing.
+No transaction rows were deleted during this operation.
+### 9.4 Customer ID Investigation
+
+After duplicate removal, 235,151 transactions had missing Customer IDs,
+representing 22.76% of the cleaned dataset.
+
+**Cancellation analysis:**
+
+| Invoice type | Rows |
+|---|---:|
+| Non-cancellation invoices | 234,437 |
+| Cancellation invoices | 714 |
+
+**Quantity statistics:**
+- Mean: 1.51
+- Median: 1
+- Minimum: -9,600
+- Maximum: 10,200
+
+**Price statistics:**
+- Mean: 7.71
+- Median: 3.29
+- Minimum: -53,594.36
+- Maximum: 25,111.09
+
+**Cleaning decision:**
+
+Missing Customer IDs will be preserved.
+
+Customer identities cannot be reliably reconstructed from the
+available information. Removing these records would result in
+a loss of 22.76% of the cleaned dataset.
+
+During warehouse loading, unidentified customers may be represented
+by a dedicated Unknown Customer dimension member.
+
+The original missing values will remain unchanged in the staging data.
+### 9.5 Cancellation Records Analysis
+
+**Objective:** Analyze invoices identified as cancellations before deciding how to handle them during data cleaning.
+
+**Results after exact duplicate removal:**
+
+| Indicator | Result |
+|---|---:|
+| Cancellation rows | 19,104 |
+| Unique cancelled invoices | 8,292 |
+| Average quantity | -24.96 |
+| Median quantity | -2 |
+| Minimum quantity | -80,995 |
+| Maximum quantity | 1 |
+| Median unit price | 2.95 |
+
+**Observations:**
+
+- Cancellation records are identified by an invoice number beginning with `C`.
+- Most cancellation records have negative quantities.
+- The maximum quantity is positive (1), so not every cancellation row has a negative quantity.
+- Unit prices are generally positive.
+- Cancellation records represent potentially important transaction information and should not automatically be treated as invalid data.
+
+**Cleaning decision:**
+
+Cancellation records will be preserved. A derived Boolean column named `IsCancelled` will be added to distinguish cancellation invoices from other invoices.
+
+The original invoice identifiers and quantities will remain unchanged. This distinction will be useful when calculating net sales in the data warehouse.
+### 9.6 Price Anomalies Analysis
+
+**Objective:** Investigate records with zero or negative unit prices.
+
+**Results after exact duplicate removal:**
+
+| Indicator | Count |
+|---|---:|
+| Zero prices | 6,014 |
+| Negative prices | 5 |
+
+**Negative price observations:**
+
+The five negative-price records have the description `Adjust bad debt`. Their invoice identifiers begin with `A`, and their quantities are positive.
+
+These records appear to represent financial adjustments rather than ordinary product sales.
+
+**Zero price observations:**
+
+Zero-price records include both ordinary product descriptions and operational descriptions such as `damages`, `lost`, and `short`.
+
+Their business meaning cannot be determined reliably from the available columns alone.
+
+**Cleaning decisions:**
+
+- Preserve all five negative-price records.
+- Preserve all zero-price records.
+- Add Boolean indicators to distinguish these records during analysis.
+- Do not automatically classify zero-price records as errors.
+
+### 9.7 Summary of Data Cleaning Decisions
+
+| Data quality issue | Decision |
+|---|---|
+| Exact duplicates | Remove |
+| Missing descriptions | Recover when a StockCode has exactly one known description; preserve the remaining missing values |
+| Missing Customer IDs | Preserve |
+| Cancellation invoices | Preserve and flag |
+| Negative prices | Preserve and flag |
+| Zero prices | Preserve and flag |
+
+The objective is to retain valid business information while making unusual records identifiable for subsequent analysis and warehouse modeling.
+### 9.8 Transaction Flags Creation
+
+Four Boolean columns were added to the cleaned dataset:
+
+| Column | Purpose |
+|---|---|
+| `IsCancelled` | Identifies cancellation invoices |
+| `IsZeroPrice` | Identifies records with a zero unit price |
+| `IsNegativePrice` | Identifies records with a negative unit price |
+| `IsCustomerUnknown` | Identifies records with a missing Customer ID |
+
+The flags allow unusual transactions and incomplete customer information to be identified without deleting the corresponding records.
+
+### 9.9 Cleaning Stage Summary
+
+After duplicate removal and description recovery:
+
+- Initial rows: 1,067,371
+- Exact duplicate rows removed: 34,335
+- Final rows: 1,033,036
+- Descriptions recovered: 2,974
+- Remaining missing descriptions: 1,301
+- Missing Customer IDs: 235,151
+
+The cleaned dataset is intended to be saved as `data/processed/retail_cleaned.parquet`, preserving the original extracted dataset separately.
+
+The saved Parquet file must be reloaded and validated before considering the cleaning stage complete.
+### 9.10 Cleaned Dataset Export and Validation
+
+The cleaned dataset was successfully exported to:
+
+`data/processed/retail_cleaned.parquet`
+
+**Export results:**
+
+| Metric | Result |
+|---|---:|
+| Rows | 1,033,036 |
+| Columns | 12 |
+| File size | 6.76 MB |
+| Missing descriptions | 1,301 |
+| Missing Customer IDs | 235,151 |
+| Cancellation rows | 19,104 |
+| Zero-price rows | 6,014 |
+| Negative-price rows | 5 |
+
+The exported Parquet file was reloaded using Pandas to verify that the data was correctly saved and remained readable.
+
+All validation results matched the expected values.
+
+**Conclusion:** The initial data cleaning and validation stage is complete. The extracted dataset remains unchanged, while the cleaned dataset is stored separately for subsequent transformation and warehouse loading.
